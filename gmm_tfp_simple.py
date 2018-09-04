@@ -18,7 +18,7 @@ print('Tensorflow version: ', tf.__version__)
 tf.reset_default_graph()
 
 dtype = np.float32
-N = 5000
+N = 500
 D = 2
 K = 3
 
@@ -156,8 +156,8 @@ def inference_vi2(num_epochs=2000, learning_rate=0.05):
     qpi_alpha = tf.nn.softplus(tf.Variable(np.zeros(K) * 1.0 / K, dtype=dtype))
     qmu_loc = tf.Variable(np.zeros([K, D]), dtype=dtype)
     qmu_scale = tf.nn.softplus(tf.Variable(np.ones([K, D]), dtype=dtype))
-    qsigma_alpha = tf.nn.softplus(tf.constant(np.ones([K, D]), dtype=dtype))
-    qsigma_beta = tf.nn.softplus(tf.constant(np.ones([K, D]), dtype=dtype))
+    qsigma_alpha = tf.nn.softplus(tf.Variable(np.ones([K, D]), dtype=dtype))
+    qsigma_beta = tf.nn.softplus(tf.Variable(np.ones([K, D]), dtype=dtype))
 
     def variational_model(qpi_alpha, qmu_loc, qmu_scale, qsigma_alpha, qsigma_beta):
         qpi = ed.Dirichlet(concentration=qpi_alpha, name='qpi')
@@ -193,11 +193,26 @@ def inference_vi2(num_epochs=2000, learning_rate=0.05):
             if i % 10 == 0:
                 losses.append(sess.run(elbo))
 
-        posterior_mu = sess.run([qmu_loc])
+        posterior_pi, posterior_mu, posterior_sigma = sess.run([
+            qpi, qmu, qsigma
+        ])
 
     print(posterior_mu)
-    plt.plot(range(len(losses)), losses)
-    plt.savefig('./plots/gmm_tfp_simples_loss_vi2.png')
+    # plt.plot(range(len(losses)), losses)
+    # plt.savefig('./plots/gmm_tfp_simples_loss_vi2.png')
+
+    # Model criticism
+    generate_process= tfd.MixtureSameFamily(
+        mixture_distribution=tfd.Categorical(probs=posterior_pi),
+        components_distribution=tfd.MultivariateNormalDiag(
+            loc=posterior_mu,
+            scale_diag=posterior_sigma
+        )
+    )
+
+    with tf.Session() as sess:
+        x_generated = generate_process.sample(500).eval()
+    return x_generated
 
 
 
@@ -239,7 +254,11 @@ def inference_vi1(num_epochs=2000, learning_rate=0.05):
 
 def main():
     # inference_map(num_epochs=2500, learning_rate=0.01)
-    inference_vi2(num_epochs=2000, learning_rate=0.075)
+    x_generated = inference_vi2(num_epochs=2000, learning_rate=0.075)
+
+    plt.scatter(observations[:, 0], observations[:, 1], c=true_hidden_component, alpha=0.2)
+    plt.scatter(x_generated[:, 0], x_generated[:, 1], marker='x')
+    plt.savefig('./plots/gmm_tfp_simple_generate1.png')
 
 
 if __name__ == '__main__':
