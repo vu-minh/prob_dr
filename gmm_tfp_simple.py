@@ -210,9 +210,10 @@ def inference_vi2(num_epochs=2000, learning_rate=0.05):
         )
     )
 
+    n_samples = 500
     with tf.Session() as sess:
-        x_generated = generate_process.sample(500).eval()
-    return x_generated
+        x_generated = generate_process.sample(n_samples).eval()
+    return x_generated, posterior_pi, posterior_mu, posterior_sigma
 
 
 
@@ -252,12 +253,38 @@ def inference_vi1(num_epochs=2000, learning_rate=0.05):
     plt.savefig('./plots/gmm_tfp_simples_loss_vi1.png')
 
 
+import matplotlib as mpl
+
+def make_ellipses(means, covs, ax):
+    # http://scikit-learn.org/stable/auto_examples/mixture/plot_gmm_covariances.html
+    colors = ['navy', 'turquoise', 'darkorange']
+    for n, color in enumerate(colors):
+
+        covariances = np.diag(covs[n][:2])
+
+        v, w = np.linalg.eigh(covariances)
+        u = w[0] / np.linalg.norm(w[0])
+        angle = np.arctan2(u[1], u[0])
+        angle = 180 * angle / np.pi  # convert to degrees
+        v = 2. * np.sqrt(2.) * np.sqrt(v)
+        ell = mpl.patches.Ellipse(means[n, :2], v[0], v[1],
+                                    180 + angle, color=color)
+        ell.set_clip_box(ax.bbox)
+        ell.set_alpha(0.5)
+        ax.add_artist(ell)
+
 def main():
     # inference_map(num_epochs=2500, learning_rate=0.01)
-    x_generated = inference_vi2(num_epochs=2000, learning_rate=0.075)
+    x_generated, pi, mu, sigma = inference_vi2(num_epochs=2000, learning_rate=0.075)
 
+    print('Cluster proportion: ', pi)
+    
+    _, ax = plt.subplots()
     plt.scatter(observations[:, 0], observations[:, 1], c=true_hidden_component, alpha=0.2)
     plt.scatter(x_generated[:, 0], x_generated[:, 1], marker='x')
+    plt.scatter(mu[:, 0], mu[:, 1], marker='*', c='black')
+    make_ellipses(means=mu, covs=sigma, ax=ax)
+
     plt.savefig('./plots/gmm_tfp_simple_generate1.png')
 
 
