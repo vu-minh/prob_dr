@@ -23,27 +23,27 @@ print('Tensorflow version: ', tf.__version__)
 tf.reset_default_graph()
 
 dtype = np.float32
-# N = 500
-# D = 2
-# K = 3
+N = 500
+D = 2
+K = 3
 
-# # Generate the data
-# true_loc = np.array([[-5, 3],
-#                      [0, 0],
-#                      [2, 2]], dtype)
-# random = np.random.RandomState(seed=42)
+# Generate the data
+true_loc = np.array([[-5, 3],
+                     [0, 0],
+                     [2, 2]], dtype)
+random = np.random.RandomState(seed=42)
 
-# true_hidden_component = random.randint(0, K, N)
-# count = [np.count_nonzero(true_hidden_component == k) * 1.0 / N
-#          for k in range(K)]
-# print(count)
-# observations = (true_loc[true_hidden_component] +
-#                 random.randn(N, D).astype(dtype))
+true_hidden_component = random.randint(0, K, N)
+count = [np.count_nonzero(true_hidden_component == k) * 1.0 / N
+         for k in range(K)]
+print(count)
+observations = (true_loc[true_hidden_component] +
+                random.randn(N, D).astype(dtype))
 
-observations, true_hidden_component = load_digits(return_X_y=True)
-observations = observations.astype(dtype)
-N, D = observations.shape
-K = 10
+# observations, true_hidden_component = load_digits(return_X_y=True)
+# observations = observations.astype(dtype)
+# N, D = observations.shape
+# K = 10
 
 # plt.scatter(observations[:, 0], observations[:, 1], c=true_hidden_component)
 # plt.savefig('./plots/gmm_tfp_data.png')
@@ -298,7 +298,7 @@ def make_ellipses(means, covs, ax):
 def main():
     # inference_map(num_epochs=2500, learning_rate=0.01)
     x_generated, predicted_clusters, pi, mu, sigma = inference_vi2(
-        num_epochs=5000, learning_rate=0.01)
+        num_epochs=2500, learning_rate=0.075)
     print('Cluster proportion: ', pi)
 
     hcv = homogeneity_completeness_v_measure(
