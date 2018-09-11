@@ -13,6 +13,7 @@ from scipy.misc import logsumexp
 from scipy.stats import multivariate_normal
 
 from matplotlib import pyplot as plt
+from matplotlib import cm
 
 dtype = np.float32
 
@@ -262,8 +263,8 @@ def load_dataset(id=0):
     return X, y, K
 
 
-def test_mppca():
-    X, y, K = load_dataset(id=0)
+def evaluate(dataset_name, id):
+    X, y, K = load_dataset(id)
     N = 2000
     M = 2
     X = X[:N].astype(np.float32).T
@@ -278,12 +279,20 @@ def test_mppca():
           'hom={:.3f}, com={:.3f}, v-measure={:.3f}'.format(*hcv))
 
     plt.plot(range(len(scores)), scores)
-    plt.savefig('./plots/mppca_np_scores.png')
+    plt.savefig('./plots/mppca_scores_{}.png'.format(dataset_name))
     plt.gcf().clear()
 
-    plt.scatter(Zk[0], Zk[1], c=y, alpha=0.3)  # , cmap='tab10')
-    plt.savefig('./plots/mppca_np_scatter0.png')
-    # plt.show()
+    scatter_with_compare(Zk.T, y, predicted_labels, dataset_name)
+
+
+def scatter_with_compare(X2d, y, predicted_labels, dataset_name):
+    plt.scatter(X2d[:, 0], X2d[:, 1], marker='o', color='white', alpha=1.0,
+                linewidths=1, s=64,
+                cmap='tab10', edgecolors=cm.tab10(y))
+    plt.scatter(X2d[:, 0], X2d[:, 1], c=predicted_labels, s=16, alpha=0.8,
+                cmap='tab20b')
+    plt.savefig('./plots/mppca_{}.png'.format(dataset_name))
+    plt.gcf().clear()
 
 
 def test_sin_curve(N=500):
@@ -296,5 +305,10 @@ def test_sin_curve(N=500):
 
 
 if __name__ == '__main__':
-    test_mppca()
-    # test_sin_curve()
+    datasets = [
+        'IRIS', # 'DIGITS', 'WINE', 'BREAST_CANCER'
+    ]
+    for dataset_id, dataset_name in enumerate(datasets):
+        print('Dataset: {}'.format(dataset_name))
+        evaluate(dataset_name, dataset_id)
+        print()
