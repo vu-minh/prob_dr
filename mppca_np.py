@@ -1,4 +1,4 @@
-"""Mixture of PPCA (with pytorch)
+"""Mixture of PPCA (with numpy)
     20180910
 """
 
@@ -114,11 +114,12 @@ def score(X, pi, sigma, mu, W, R, T_inv):
 
         Returns:
             score: (scalar)
-    """   
+            Z: (K, M, N) latent position of each point w.r.t each cluster
+    """
     D, N = X.shape
     K, D, M = W.shape
 
-    Z = np.zeros([K, M, N]) # latent pos for each point w.r.t each component
+    Z = np.zeros([K, M, N])  # latent pos for each point w.r.t each component
     ZZ = np.zeros([K, M, M])
     for k in range(K):
         # calculate latent position E[z] (eq. 71)
@@ -133,7 +134,7 @@ def score(X, pi, sigma, mu, W, R, T_inv):
         t = 0.0
         for k in range(K):
             sigma_k = sigma[k][0]
-            Xk = X[:, n].reshape(D, 1) - mu[k].reshape(D, 1) # (D, 1)
+            Xk = X[:, n].reshape(D, 1) - mu[k].reshape(D, 1)  # (D, 1)
             Zkn = Z[k, :, n].reshape([M, 1])
 
             t += np.log(pi[k])
@@ -144,7 +145,7 @@ def score(X, pi, sigma, mu, W, R, T_inv):
             t += 1.0 / sigma[k] * np.asscalar(Zkn.T @ W[k].T @ Xk)
             t -= 0.5 / sigma[k] * np.diag(W[k].T @ W[k] @ ZZ[k]).sum()
 
-        lc += R[k,n] * t
+        lc += R[k, n] * t
 
     return - lc, Z
 
@@ -218,16 +219,16 @@ def mppca(X, M, K, n_iters=100, tolerance=1e-4):
         # predicted cluster
         predicted_labels = np.argmax(R, axis=0)
 
-        # latent position (eq. 71)
-        # $z_n = T_inv * W_k.T * (x_n - mu_k)$
-        Z = np.zeros([M, N])
+        # latent position not centered (eq. 71)
+        # $z_n = T_inv * W_k.T * x_n$
+        Zk = np.zeros([M, N])
         for i in range(N):
             label_i = predicted_labels[i]
-            mean_i = mu[label_i]
-            W_i = W[label_i] # (D, M)
-            Z[:, i] = T_inv[label_i] @ W_i.T @ (X[:, i]) # (M, M) @ (M, D) @ (D, 1)
-            
-    return pi, sigma, mu, W, R, Z, scores
+            W_i = W[label_i]  # (D, M)
+            Zk[:, i] = T_inv[label_i] @ W_i.T @ (
+                X[:, i])  # (M, M) @ (M, D) @ (D, 1)
+
+    return pi, sigma, mu, W, R, Z, Zk, scores
 
 
 def check_nan_all(params):
@@ -235,70 +236,65 @@ def check_nan_all(params):
         if np.isnan(param).any():
             raise Exception('Param values containts NAN')
 
+
+def load_sin_curve(N=500, K=8, return_X_y=False):
+    X = np.zeros((N, 2))
+    step = 4. * np.pi / N
+    for i in range(X.shape[0]):
+        x = i * step - 6.
+        X[i, 0] = x + np.random.normal(0, 0.1)
+        X[i, 1] = 3. * (np.sin(x) + np.random.normal(0, .2))
+    return {'data': X, 'target': [0]*N, 'target_names': [0]*K}
+
+
 def load_dataset(id=0):
     load_funcs = [
         load_iris,
         load_digits,
         load_wine,
-        load_breast_cancer
+        load_breast_cancer,
+        load_sin_curve
     ]
     dataset = load_funcs[id](return_X_y=False)
     X = dataset['data']
-    y = dataset.target
-    K = len(dataset.target_names)
+    y = dataset['target']
+    K = len(dataset['target_names'])
     return X, y, K
 
 
-def main():
+def test_mppca():
     X, y, K = load_dataset(id=0)
-    N = 200
+    N = 2000
     M = 2
     X = X[:N].astype(np.float32).T
     y = y[:N]
     D, N = X.shape
 
-    pi, sigma, mu, W, R, Z, scores = mppca(X, M, K, n_iters=20)
-    print(pi)
+    pi, sigma, mu, W, R, Z, Zk, scores = mppca(X, M, K, n_iters=50)
 
     predicted_labels = np.argmax(R, axis=0)
     hcv = hcv_measure(labels_true=y, labels_pred=predicted_labels)
-    print('Clustering measures: hom={:.3f}, com={:.3f}, v-measure={:.3f}'.format(*hcv))
+    print('Clustering measures: '
+          'hom={:.3f}, com={:.3f}, v-measure={:.3f}'.format(*hcv))
 
     plt.plot(range(len(scores)), scores)
     plt.savefig('./plots/mppca_np_scores.png')
     plt.gcf().clear()
 
-    muZ = np.zeros([K, M])
-    for k in range(K):
-        muZ[k] = mu[k].reshape(1, D) @ W[k].reshape(D, M)
-    print('muZ: ', muZ.shape)
-
-    plt.scatter(Z[0], Z[1], c=y, alpha=0.3, cmap='tab10')
-    # plt.scatter(Z[0], Z[1], c=predicted_labels, marker='*', alpha=0.2)
-    # plt.scatter(muZ[:, 0], muZ[:, 1], marker='*', color='red')
+    plt.scatter(Zk[0], Zk[1], c=y, alpha=0.3)  # , cmap='tab10')
     plt.savefig('./plots/mppca_np_scatter0.png')
-    plt.show()
+    # plt.show()
+
+
+def test_sin_curve(N=500):
+    X, y, K = load_dataset(id=4)
+    X = X.T
+    pi, sigma, mu, W, R, Z, Zk, scores = mppca(X, M=2, K=6, n_iters=20)
+    predicted_labels = np.argmax(R, axis=0)
+    plt.scatter(X[0], X[1], c=predicted_labels, alpha=0.5)
+    plt.savefig('./plots/mppca_np_sin_curve.png')
 
 
 if __name__ == '__main__':
-    main()
-
-# GMM Sklearn:  -2.05502477396482
-# [[5.92570671 2.74947486 4.40355611 1.41204163]
-#  [6.80608227 3.07023101 5.71889404 2.10305301]
-#  [5.006      3.41800001 1.464      0.244     ]]
-# [0.41200771 0.25465896 0.33333333]
-# Measure:  (0.7695955651465264, 0.7859016861703576, 0.77766315794623)
-
-# my code MNIST small:
-# [[0.11814364]
-#  [0.11351336]
-#  [0.09849755]
-#  [0.13053337]
-#  [0.05953876]
-#  [0.09761061]
-#  [0.08124621]
-#  [0.0980306 ]
-#  [0.09794485]
-#  [0.10494106]]
-# (0.7939168638797219, 0.8002401950243518, 0.7970659884929948)
+    test_mppca()
+    # test_sin_curve()
