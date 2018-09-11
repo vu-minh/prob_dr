@@ -26,13 +26,13 @@ dtype = np.float32
 # W: (K, D, M)
 
 
-def initialize(X, N, D, M, K, variance=1.0):
+def initialize(X, N, D, M, K, variance=0.25):
     kmeans = KMeans(n_clusters=K)
     kmeans.fit(X.T)
     mu = kmeans.cluster_centers_
 
     pi = np.ones([K, 1], dtype=dtype) / K
-    sigma = np.ones([K, 1], dtype=dtype) * 0.5
+    sigma = np.ones([K, 1], dtype=dtype) * variance
     W = np.zeros([K, D, M], dtype=dtype)
     for k in range(K):
         W[k] = np.random.randn(D, M)
@@ -263,8 +263,15 @@ def load_dataset(id=0):
     return X, y, K
 
 
-def evaluate(dataset_name, id):
-    X, y, K = load_dataset(id)
+def evaluate(dataset_name, id, selected_classes=None):
+    if selected_classes is None:
+        X, y, K = load_dataset(id)
+    else:
+        X, y, K = digits_some_classes(selected_classes)
+        dataset_name = '{}_{}'.format(dataset_name, '-'.join(
+            list(map(str, selected_classes))
+        ))
+
     N = 2000
     M = 2
     X = X[:N].astype(np.float32).T
@@ -304,11 +311,21 @@ def test_sin_curve(N=500):
     plt.savefig('./plots/mppca_np_sin_curve.png')
 
 
+def digits_some_classes(selected_classes=[0, 1], num_datapoints=2000):
+    x_train, y_train = load_digits(return_X_y=True)
+    mask = [True if yclass in selected_classes else False for yclass in y_train]
+    X = x_train[mask][:num_datapoints]
+    y = y_train[mask][:num_datapoints]
+    K = len(selected_classes)
+    return X, y, K
+
+
 if __name__ == '__main__':
-    datasets = [
-        'IRIS', # 'DIGITS', 'WINE', 'BREAST_CANCER'
-    ]
-    for dataset_id, dataset_name in enumerate(datasets):
-        print('Dataset: {}'.format(dataset_name))
-        evaluate(dataset_name, dataset_id)
-        print()
+    # datasets = [
+    #     'IRIS', 'DIGITS', 'WINE', 'BREAST_CANCER'
+    # ]
+    # for dataset_id, dataset_name in enumerate(datasets):
+    #     print('Dataset: {}'.format(dataset_name))
+    #     evaluate(dataset_name, dataset_id)
+    #     print()
+    evaluate('DIGITS', id=1, selected_classes=[8, 0])
