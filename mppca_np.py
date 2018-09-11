@@ -99,20 +99,57 @@ def posterior(X, pi, sigma, mu, W):
     return R, T_inv
 
 
-def score():
+def score(X, pi, sigma, mu, W, R, T_inv):
     """Score: log likelihood of complete-data
         $log p(x, mu, sigma, pi)$
 
+        Args:
+            X: (D, N)
+            pi: (K)
+            sigma: (K)
+            mu: (K, D)
+            W: (K, D, M)
+            R: (K, N)
+            T_inv: (K, M, M)
+
         Returns:
             score: (scalar)
-    """
-    # calculate E[z] (eq. 71)
-    # calculate E[zzT] (eq. 72)
+    """   
+    D, N = X.shape
+    K, D, M = W.shape
+
+    Z = np.zeros([K, M, N]) # latent pos for each point w.r.t each component
+    ZZ = np.zeros([K, M, M])
+    for k in range(K):
+        # calculate latent position E[z] (eq. 71)
+        # $z_n = T_inv * W_k.T * (x_n - mu_k)$
+        Z[k] = T_inv[k] @ W[k].T @ (X - mu[k].reshape(D, 1))
+        # calculate E[zzT] (eq. 72)
+        ZZ[k] = sigma[k] * T_inv[k] + Z[k] @ Z[k].T
+
     # calculate E[Lc] (eq. 81)
-    pass
+    lc = 0.0
+    for n in range(N):
+        t = 0.0
+        for k in range(K):
+            sigma_k = sigma[k][0]
+            Xk = X[:, n].reshape(D, 1) - mu[k].reshape(D, 1) # (D, 1)
+            Zkn = Z[k, :, n].reshape([M, 1])
+
+            t += np.log(pi[k])
+            t -= 0.5 * D * np.log(sigma[k])
+            t -= 0.5 * M * np.log(2 * np.pi)
+            t -= 0.5 * np.asscalar(Zkn.T @ Zkn)
+            t -= 0.5 / sigma_k * np.asscalar(Xk.T @ Xk)
+            t += 1.0 / sigma[k] * np.asscalar(Zkn.T @ W[k].T @ Xk)
+            t -= 0.5 / sigma[k] * np.diag(W[k].T @ W[k] @ ZZ[k]).sum()
+
+        lc += R[k,n] * t
+
+    return - lc, Z
 
 
-def em_loop(X, M, K, n_iters=100, tolerance=1e-4):
+def mppca(X, M, K, n_iters=100, tolerance=1e-4):
     D, N = X.shape
     print('Dataset: N={}, D={} --> M={}, K={}'.format(N, D, M, K))
 
@@ -121,8 +158,9 @@ def em_loop(X, M, K, n_iters=100, tolerance=1e-4):
     #print(pi, sigma, mu)
     print('Done init\n')
 
+    scores = []
+
     for i in tqdm(range(n_iters)):
-        # print('================\nIteration: {}'.format(i+1))
         # E-Step
         # calculate responsibility (eq. 21), using old params
         old_pi, old_sigma, old_mu, old_W = pi, sigma, mu, W
@@ -166,12 +204,13 @@ def em_loop(X, M, K, n_iters=100, tolerance=1e-4):
             new_sigma[k] = 1.0 / D * np.diag(temp).sum()  # tr(D, D) -> scalar
 
         # check covergence based on score
+        logllh, Z = score(X, new_pi, old_sigma, new_mu, old_W, R, T_inv)
+        scores.append(logllh)
+
         converge = False
         if not converge:
             # update param
             pi, sigma, mu, W = new_pi, new_sigma, new_mu, new_W
-
-        # print('Done iteration {}\n\n'.format(i+1))
 
         # check NAN
         check_nan_all([pi, sigma, mu, W])
@@ -188,7 +227,7 @@ def em_loop(X, M, K, n_iters=100, tolerance=1e-4):
             W_i = W[label_i] # (D, M)
             Z[:, i] = T_inv[label_i] @ W_i.T @ (X[:, i]) # (M, M) @ (M, D) @ (D, 1)
             
-    return pi, sigma, mu, W, R, Z
+    return pi, sigma, mu, W, R, Z, scores
 
 
 def check_nan_all(params):
@@ -196,33 +235,48 @@ def check_nan_all(params):
         if np.isnan(param).any():
             raise Exception('Param values containts NAN')
 
+def load_dataset(id=0):
+    load_funcs = [
+        load_iris,
+        load_digits,
+        load_wine,
+        load_breast_cancer
+    ]
+    dataset = load_funcs[id](return_X_y=False)
+    X = dataset['data']
+    y = dataset.target
+    K = len(dataset.target_names)
+    return X, y, K
+
 
 def main():
-    N = 500
+    X, y, K = load_dataset(id=0)
+    N = 200
     M = 2
-    K = 3
-    X, y = load_iris(return_X_y=True)
     X = X[:N].astype(np.float32).T
     y = y[:N]
     D, N = X.shape
 
-    pi, sigma, mu, W, R, Z = em_loop(X, M, K, n_iters=20)
+    pi, sigma, mu, W, R, Z, scores = mppca(X, M, K, n_iters=20)
     print(pi)
-    # print(mu)
+
     predicted_labels = np.argmax(R, axis=0)
     hcv = hcv_measure(labels_true=y, labels_pred=predicted_labels)
-    print(hcv)
+    print('Clustering measures: hom={:.3f}, com={:.3f}, v-measure={:.3f}'.format(*hcv))
 
+    plt.plot(range(len(scores)), scores)
+    plt.savefig('./plots/mppca_np_scores.png')
+    plt.gcf().clear()
 
     muZ = np.zeros([K, M])
     for k in range(K):
         muZ[k] = mu[k].reshape(1, D) @ W[k].reshape(D, M)
     print('muZ: ', muZ.shape)
 
-    plt.scatter(Z[0], Z[1], c=y, alpha=0.3)
+    plt.scatter(Z[0], Z[1], c=y, alpha=0.3, cmap='tab10')
     # plt.scatter(Z[0], Z[1], c=predicted_labels, marker='*', alpha=0.2)
     # plt.scatter(muZ[:, 0], muZ[:, 1], marker='*', color='red')
-    plt.savefig('./plots/ppca_np_digits0.png')
+    plt.savefig('./plots/mppca_np_scatter0.png')
     plt.show()
 
 
