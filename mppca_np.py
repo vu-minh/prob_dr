@@ -206,7 +206,7 @@ def mppca(X, M, K, n_iters=100, tolerance=1e4):
         new_score, Z = score(X, new_pi, old_sigma, new_mu, old_W, R, T_inv)
         scores.append(new_score)
 
-        converge = False # Always run to max_iters
+        converge = False  # Always run to max_iters
         if not converge:
             old_score = new_score
             # update param
@@ -224,7 +224,8 @@ def mppca(X, M, K, n_iters=100, tolerance=1e4):
             for n in range(N):
                 label_n = predicted_labels[n]
                 W_n = W[label_n]  # (D, M)
-                Zk[:, n] = T_inv[label_n] @ W_n.T @ (X[:, n]) # (M, M) @ (M, D) @ (D, 1)
+                Zk[:, n] = T_inv[label_n] @ W_n.T @ (
+                    X[:, n])  # (M, M) @ (M, D) @ (D, 1)
         else:
             break
 
@@ -268,9 +269,10 @@ def evaluate(dataset_name, id, selected_classes=None):
         X, y, K = load_dataset(id)
     else:
         X, y, K = digits_some_classes(selected_classes)
-        dataset_name = '{}_{}'.format(dataset_name, '-'.join(
-            list(map(str, selected_classes))
-        ))
+        dataset_name += '_some_classes'
+        # dataset_name = '{}_{}'.format(dataset_name, '-'.join(
+        #     list(map(str, selected_classes))
+        # ))
 
     N = 2000
     M = 2
@@ -294,18 +296,18 @@ def evaluate(dataset_name, id, selected_classes=None):
 
 
 def scatter_with_compare(X2d, y, predicted_labels, dataset_name):
-    fig, axes = plt.subplots(1, 2, figsize=(17,6))
-    plt.rcParams.update({'axes.titlesize':'xx-large'})
+    fig, axes = plt.subplots(1, 2, figsize=(17, 6))
+    plt.rcParams.update({'axes.titlesize': 'xx-large'})
 
     axes[0].scatter(X2d[:, 0], X2d[:, 1], marker='o', color='white', alpha=1.0,
-                linewidths=1, s=64,
-                cmap='tab10', edgecolors=cm.tab10(y))
+                    linewidths=1, s=64,
+                    cmap='tab10', edgecolors=cm.tab10(y))
     axes[0].set_title('Position by MPPCA, Color by True Label')
-    
+
     axes[1].scatter(X2d[:, 0], X2d[:, 1], c=predicted_labels, s=64, alpha=0.7,
-                cmap='tab10')
+                    cmap='tab10')
     axes[1].set_title('Position and Color by MPPCA')
-    
+
     plt.tight_layout()
     plt.savefig('./plots/mppca_{}.png'.format(dataset_name))
     # plt.gcf().clear()
@@ -329,17 +331,20 @@ def digits_some_classes(selected_classes=[0, 1], num_datapoints=2000):
     return X, y, K
 
 
+def run_all_datasets():
+    datasets = [
+        'IRIS', 'DIGITS', 'WINE', 'BREAST_CANCER'
+    ]
+    for dataset_id, dataset_name in enumerate(datasets):
+        if dataset_name == '':
+            continue
+        print('Dataset: {}'.format(dataset_name))
+        evaluate(dataset_name, dataset_id)
+        print()
+
+
 if __name__ == '__main__':
-    # datasets = [
-    #     'IRIS', 'DIGITS', 'WINE', 'BREAST_CANCER'
-    # ]
-    # for dataset_id, dataset_name in enumerate(datasets):
-    #     if dataset_name == '':
-    #         continue
-    #     print('Dataset: {}'.format(dataset_name))
-    #     evaluate(dataset_name, dataset_id)
-    #     print()
-    
-    evaluate('IRIS', id=0)
+    # run_all_datasets()
+    # evaluate('IRIS', id=0)
     # evaluate('DIGITS', id=1)
-    # evaluate('DIGITS', id=1, selected_classes=[8, 0])
+    evaluate('DIGITS', id=1, selected_classes=[9, 7, 2])
