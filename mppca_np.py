@@ -26,7 +26,7 @@ dtype = np.float32
 # W: (K, D, M)
 
 
-def initialize(X, N, D, M, K, variance=0.25):
+def initialize(X, N, D, M, K, variance=0.1):
     kmeans = KMeans(n_clusters=K)
     kmeans.fit(X.T)
     mu = kmeans.cluster_centers_
@@ -148,21 +148,18 @@ def score(X, pi, sigma, mu, W, R, T_inv):
 
         lc += R[k, n] * t
 
-    return - lc, Z
+    return - np.asscalar(lc), Z
 
 
-def mppca(X, M, K, n_iters=100, tolerance=1e-4):
+def mppca(X, M, K, n_iters=100, tolerance=1e4):
     D, N = X.shape
     print('Dataset: N={}, D={} --> M={}, K={}'.format(N, D, M, K))
 
     pi, sigma, mu, W = initialize(X, N, D, M, K)
-    print('Init params: ')
-    #print(pi, sigma, mu)
-    print('Done init\n')
-
+    old_score = - np.inf
     scores = []
 
-    for i in tqdm(range(n_iters)):
+    for idx in tqdm(range(n_iters)):
         # E-Step
         # calculate responsibility (eq. 21), using old params
         old_pi, old_sigma, old_mu, old_W = pi, sigma, mu, W
@@ -206,29 +203,32 @@ def mppca(X, M, K, n_iters=100, tolerance=1e-4):
             new_sigma[k] = 1.0 / D * np.diag(temp).sum()  # tr(D, D) -> scalar
 
         # check covergence based on score
-        logllh, Z = score(X, new_pi, old_sigma, new_mu, old_W, R, T_inv)
-        scores.append(logllh)
+        new_score, Z = score(X, new_pi, old_sigma, new_mu, old_W, R, T_inv)
+        scores.append(new_score)
 
-        converge = False
+        converge = False # Always run to max_iters
         if not converge:
+            old_score = new_score
             # update param
             pi, sigma, mu, W = new_pi, new_sigma, new_mu, new_W
 
-        # check NAN
-        check_nan_all([pi, sigma, mu, W])
+            # check NAN
+            check_nan_all([pi, sigma, mu, W])
 
-        # predicted cluster
-        predicted_labels = np.argmax(R, axis=0)
+            # predicted cluster
+            predicted_labels = np.argmax(R, axis=0)
 
-        # latent position not centered (eq. 71)
-        # $z_n = T_inv * W_k.T * x_n$
-        Zk = np.zeros([M, N])
-        for i in range(N):
-            label_i = predicted_labels[i]
-            W_i = W[label_i]  # (D, M)
-            Zk[:, i] = T_inv[label_i] @ W_i.T @ (
-                X[:, i])  # (M, M) @ (M, D) @ (D, 1)
+            # latent position not centered (eq. 71)
+            # $z_n = T_inv * W_k.T * x_n$
+            Zk = np.zeros([M, N])
+            for n in range(N):
+                label_n = predicted_labels[n]
+                W_n = W[label_n]  # (D, M)
+                Zk[:, n] = T_inv[label_n] @ W_n.T @ (X[:, n]) # (M, M) @ (M, D) @ (D, 1)
+        else:
+            break
 
+    print('Terminated after {} iterations with score = {:.3f}'.format(idx+1, old_score))
     return pi, sigma, mu, W, R, Z, Zk, scores
 
 
@@ -278,34 +278,43 @@ def evaluate(dataset_name, id, selected_classes=None):
     y = y[:N]
     D, N = X.shape
 
-    pi, sigma, mu, W, R, Z, Zk, scores = mppca(X, M, K, n_iters=50)
+    pi, sigma, mu, W, R, Z, Zk, scores = mppca(X, M, K, n_iters=10)
 
     predicted_labels = np.argmax(R, axis=0)
     hcv = hcv_measure(labels_true=y, labels_pred=predicted_labels)
     print('Clustering measures: '
           'hom={:.3f}, com={:.3f}, v-measure={:.3f}'.format(*hcv))
 
-    plt.plot(range(len(scores)), scores)
-    plt.savefig('./plots/mppca_scores_{}.png'.format(dataset_name))
-    plt.gcf().clear()
+    # plt.gcf().clear()
+    # plt.plot(range(len(scores)), scores)
+    # plt.savefig('./plots/mppca_scores_{}.png'.format(dataset_name))
+    # plt.gcf().clear()
 
     scatter_with_compare(Zk.T, y, predicted_labels, dataset_name)
 
 
 def scatter_with_compare(X2d, y, predicted_labels, dataset_name):
-    plt.scatter(X2d[:, 0], X2d[:, 1], marker='o', color='white', alpha=1.0,
+    fig, axes = plt.subplots(1, 2, figsize=(17,6))
+    plt.rcParams.update({'axes.titlesize':'xx-large'})
+
+    axes[0].scatter(X2d[:, 0], X2d[:, 1], marker='o', color='white', alpha=1.0,
                 linewidths=1, s=64,
                 cmap='tab10', edgecolors=cm.tab10(y))
-    plt.scatter(X2d[:, 0], X2d[:, 1], c=predicted_labels, s=16, alpha=0.8,
-                cmap='tab20b')
+    axes[0].set_title('Position by MPPCA, Color by True Label')
+    
+    axes[1].scatter(X2d[:, 0], X2d[:, 1], c=predicted_labels, s=64, alpha=0.7,
+                cmap='tab10')
+    axes[1].set_title('Position and Color by MPPCA')
+    
+    plt.tight_layout()
     plt.savefig('./plots/mppca_{}.png'.format(dataset_name))
-    plt.gcf().clear()
+    # plt.gcf().clear()
 
 
 def test_sin_curve(N=500):
     X, y, K = load_dataset(id=4)
     X = X.T
-    pi, sigma, mu, W, R, Z, Zk, scores = mppca(X, M=2, K=6, n_iters=20)
+    pi, sigma, mu, W, R, Z, Zk, scores = mppca(X, M=2, K=6, n_iters=10)
     predicted_labels = np.argmax(R, axis=0)
     plt.scatter(X[0], X[1], c=predicted_labels, alpha=0.5)
     plt.savefig('./plots/mppca_np_sin_curve.png')
@@ -325,7 +334,12 @@ if __name__ == '__main__':
     #     'IRIS', 'DIGITS', 'WINE', 'BREAST_CANCER'
     # ]
     # for dataset_id, dataset_name in enumerate(datasets):
+    #     if dataset_name == '':
+    #         continue
     #     print('Dataset: {}'.format(dataset_name))
     #     evaluate(dataset_name, dataset_id)
     #     print()
-    evaluate('DIGITS', id=1, selected_classes=[8, 0])
+    
+    evaluate('IRIS', id=0)
+    # evaluate('DIGITS', id=1)
+    # evaluate('DIGITS', id=1, selected_classes=[8, 0])
