@@ -14,6 +14,8 @@ from scipy.stats import multivariate_normal
 
 from matplotlib import pyplot as plt
 from matplotlib import cm
+import seaborn
+seaborn.set(style='whitegrid')
 
 dtype = np.float32
 
@@ -249,24 +251,18 @@ def load_sin_curve(N=500, K=8, return_X_y=False):
     return {'data': X, 'target': [0]*N, 'target_names': [0]*K}
 
 
-def load_dataset(id=0):
-    load_funcs = [
-        load_iris,
-        load_digits,
-        load_wine,
-        load_breast_cancer,
-        load_sin_curve
-    ]
-    dataset = load_funcs[id](return_X_y=False)
+def load_dataset(dataset_name):
+    load_func = datasets[dataset_name]
+    dataset = load_func(return_X_y=False)
     X = dataset['data']
     y = dataset['target']
     K = len(dataset['target_names'])
     return X, y, K
 
 
-def evaluate(dataset_name, id, selected_classes=None):
+def evaluate(dataset_name, selected_classes=None):
     if selected_classes is None:
-        X, y, K = load_dataset(id)
+        X, y, K = load_dataset(dataset_name)
     else:
         X, y, K = digits_some_classes(selected_classes)
         dataset_name += '_some_classes'
@@ -282,6 +278,9 @@ def evaluate(dataset_name, id, selected_classes=None):
 
     pi, sigma, mu, W, R, Z, Zk, scores = mppca(X, M, K, n_iters=10)
 
+    project_data_different_axes(Z, R)
+    return
+
     predicted_labels = np.argmax(R, axis=0)
     hcv = hcv_measure(labels_true=y, labels_pred=predicted_labels)
     print('Clustering measures: '
@@ -293,6 +292,33 @@ def evaluate(dataset_name, id, selected_classes=None):
     # plt.gcf().clear()
 
     scatter_with_compare(Zk.T, y, predicted_labels, dataset_name)
+
+
+def project_data_different_axes(Z, R):
+    """Visualize the projected points on each components
+
+    Args:
+        Z: (K, M, N) Project on M-dim of N points on K components
+        R: (K, N) Responsibility of each point w.r.t each component
+    """
+    K, M, N = Z.shape
+    x_max, x_min = np.max(Z[:, 0, :]), np.min(Z[:, 0, :])
+    y_max, y_min = np.max(Z[:, 1, :]), np.min(Z[:, 1, :])
+
+    n_rows = 1 if K < 5 else K // 5
+    n_cols = K if K < 5 else 5
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols*5, n_rows * 5))
+    predicted_cluster = np.argmax(R, axis=0)
+    for k, ax in enumerate(axes.ravel().tolist()):
+        if k >= K:
+            break
+        Zk = Z[k].reshape(M, N)
+        ax.scatter(Zk[0, :], Zk[1, :], c=predicted_cluster, cmap='tab10')
+        ax.set_title('View from cluster {}'.format(k))
+        ax.set_xlim(x_min, x_max)
+        ax.set_ylim(y_min, y_max)
+    plt.savefig('./plots/mppca_multiviews'.format(k))
+    plt.gcf().clear()
 
 
 def scatter_with_compare(X2d, y, predicted_labels, dataset_name):
@@ -332,19 +358,21 @@ def digits_some_classes(selected_classes=[0, 1], num_datapoints=2000):
 
 
 def run_all_datasets():
-    datasets = [
-        'IRIS', 'DIGITS', 'WINE', 'BREAST_CANCER'
-    ]
-    for dataset_id, dataset_name in enumerate(datasets):
-        if dataset_name == '':
-            continue
+    for dataset_name in datasets:
         print('Dataset: {}'.format(dataset_name))
-        evaluate(dataset_name, dataset_id)
+        evaluate(dataset_name)
         print()
 
 
+datasets = {
+    'IRIS': load_iris,
+    'DIGITS': load_digits,
+    'WINE': load_wine,
+    'BREAST_CANCER': load_breast_cancer
+}
+
 if __name__ == '__main__':
     # run_all_datasets()
-    # evaluate('IRIS', id=0)
+    evaluate('IRIS')
     # evaluate('DIGITS', id=1)
-    evaluate('DIGITS', id=1, selected_classes=[9, 7, 2])
+    # evaluate('DIGITS', id=1, selected_classes=[9, 7, 2])
