@@ -2,6 +2,8 @@
     20180910
 """
 
+import math
+
 import numpy as np
 from tqdm import tqdm
 
@@ -278,8 +280,8 @@ def evaluate(dataset_name, selected_classes=None):
 
     pi, sigma, mu, W, R, Z, Zk, scores = mppca(X, M, K, n_iters=10)
 
+    visualize_means(mu)
     project_data_different_axes(Z, R)
-    return
 
     predicted_labels = np.argmax(R, axis=0)
     hcv = hcv_measure(labels_true=y, labels_pred=predicted_labels)
@@ -292,6 +294,24 @@ def evaluate(dataset_name, selected_classes=None):
     # plt.gcf().clear()
 
     scatter_with_compare(Zk.T, y, predicted_labels, dataset_name)
+
+
+def visualize_means(mu):
+    """Visualize in form of image the value in the mean of K components
+
+    Args:
+        mu: (K, D)
+    """
+    K, D = mu.shape
+    img_size = int(math.sqrt(D))
+    fig, axes = plt.subplots(nrows=1, ncols=K)
+    for k, ax in enumerate(axes.ravel().tolist()):
+        ax.set_axis_off()
+        img = mu[k].reshape(img_size, img_size)
+        ax.imshow(img, cmap='gray_r')
+    plt.tight_layout()
+    plt.savefig('./plots/mppca_means.png')
+    plt.gcf().clear()
 
 
 def project_data_different_axes(Z, R):
@@ -317,6 +337,7 @@ def project_data_different_axes(Z, R):
         ax.set_title('View from cluster {}'.format(k))
         ax.set_xlim(x_min, x_max)
         ax.set_ylim(y_min, y_max)
+    plt.tight_layout()
     plt.savefig('./plots/mppca_multiviews'.format(k))
     plt.gcf().clear()
 
@@ -336,7 +357,7 @@ def scatter_with_compare(X2d, y, predicted_labels, dataset_name):
 
     plt.tight_layout()
     plt.savefig('./plots/mppca_{}.png'.format(dataset_name))
-    # plt.gcf().clear()
+    plt.gcf().clear()
 
 
 def test_sin_curve(N=500):
@@ -373,6 +394,6 @@ datasets = {
 
 if __name__ == '__main__':
     # run_all_datasets()
-    evaluate('IRIS')
-    # evaluate('DIGITS', id=1)
-    # evaluate('DIGITS', id=1, selected_classes=[9, 7, 2])
+    # evaluate('IRIS')
+    evaluate('DIGITS')
+    # evaluate('DIGITS', selected_classes=[9, 7, 2])
