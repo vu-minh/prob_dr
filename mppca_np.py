@@ -226,14 +226,14 @@ def mppca(X, M, K, n_iters=100, tolerance=1e4):
             # $z_n = T_inv * W_k.T * x_n$
             Zk = np.zeros([M, N])
             for n in range(N):
-                label_n = predicted_labels[n]
-                W_n = W[label_n]  # (D, M)
-                Zk[:, n] = T_inv[label_n] @ W_n.T @ (
-                    X[:, n])  # (M, M) @ (M, D) @ (D, 1)
+                k = predicted_labels[n]
+                W_n = W[k]  # (D, M)
+                Zk[:, n] = T_inv[k] @ W_n.T @ X[:, n]  # (M, M)@(M, D)@(D, 1)
         else:
             break
 
-    print('Terminated after {} iterations with score = {:.3f}'.format(idx+1, old_score))
+    print('Terminated after {} iterations '
+          'with score = {:.3f}'.format(idx+1, old_score))
     return pi, sigma, mu, W, R, Z, Zk, scores
 
 
@@ -273,13 +273,14 @@ def evaluate(dataset_name, selected_classes=None):
         # ))
 
     N = 2000
-    M = 2
+    M = 10
     X = X[:N].astype(np.float32).T
     y = y[:N]
     D, N = X.shape
 
     pi, sigma, mu, W, R, Z, Zk, scores = mppca(X, M, K, n_iters=10)
 
+    visualize_weights(W)
     visualize_means(mu)
     project_data_different_axes(Z, R)
 
@@ -294,6 +295,50 @@ def evaluate(dataset_name, selected_classes=None):
     # plt.gcf().clear()
 
     scatter_with_compare(Zk.T, y, predicted_labels, dataset_name)
+
+
+def hinton(matrix, max_weight=None, ax=None):
+    """Draw Hinton diagram for visualizing a weight matrix.
+    https://matplotlib.org/gallery/specialty_plots/hinton_demo.html
+    or using this function: mpltools.special.hinton (edited locally)
+    """
+    ax = ax if ax is not None else plt.gca()
+
+    if not max_weight:
+        max_weight = 2 ** np.ceil(np.log(np.abs(matrix).max()) / np.log(2))
+
+    ax.patch.set_facecolor('gray')
+    ax.set_aspect('equal', 'box')
+    ax.xaxis.set_major_locator(plt.NullLocator())
+    ax.yaxis.set_major_locator(plt.NullLocator())
+
+    for (x, y), w in np.ndenumerate(matrix):
+        color = 'white' if w > 0 else 'black'
+        size = np.sqrt(np.abs(w) / max_weight)
+        rect = plt.Rectangle([x - size / 2, y - size / 2], size, size,
+                             facecolor=color, edgecolor=color)
+        ax.add_patch(rect)
+
+    ax.autoscale_view()
+    ax.invert_yaxis()
+
+
+def visualize_weights(W):
+    """Visualize the weight matrix of each components using Hinton diagram
+
+    Args:
+        W: (K, D, M)
+    """
+    K, D, M = W.shape
+    fig, axes = plt.subplots(4, 3, figsize=(30,40))
+    for k, ax in enumerate(axes.ravel()):
+        if k >= K:
+            ax.axis('off')
+            continue
+        hinton(W[k], ax=ax)
+    plt.tight_layout()
+    plt.savefig('./plots/hinton_diag.png')
+    plt.gcf().clear()
 
 
 def visualize_means(mu):
@@ -338,7 +383,7 @@ def project_data_different_axes(Z, R):
         ax.set_xlim(x_min, x_max)
         ax.set_ylim(y_min, y_max)
     plt.tight_layout()
-    plt.savefig('./plots/mppca_multiviews'.format(k))
+    plt.savefig('./plots/mppca_multiviews_{}'.format(k))
     plt.gcf().clear()
 
 
